@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { catBehaviorThought, chooseCatThought } from './catThoughts.js';
+import { shouldReduceCatMotion } from './motionPreference.js';
 
 const CAT_WALK_ANIMATION = 'cat-walk-cycle';
 const WALK_MIN_X = 70;
@@ -35,9 +36,19 @@ export class CatView {
     this.motionQuery = typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(prefers-reduced-motion: reduce)')
       : null;
-    this.reducedMotion = this.motionQuery?.matches ?? false;
-    this.onMotionPreferenceChange = (event) => this.setReducedMotion(event.matches);
+    this.pointerQuery = typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(pointer: coarse)')
+      : null;
+    this.reducedMotion = shouldReduceCatMotion(
+      this.motionQuery?.matches ?? false,
+      this.pointerQuery?.matches ?? false,
+    );
+    this.onMotionPreferenceChange = () => this.setReducedMotion(shouldReduceCatMotion(
+      this.motionQuery?.matches ?? false,
+      this.pointerQuery?.matches ?? false,
+    ));
     this.motionQuery?.addEventListener?.('change', this.onMotionPreferenceChange);
+    this.pointerQuery?.addEventListener?.('change', this.onMotionPreferenceChange);
 
     this.container = scene.add.container(x, y).setDepth(1);
     this.container.setSize(128, 128).setInteractive({
@@ -684,6 +695,7 @@ export class CatView {
     this.cleanupActiveToy();
     if (this.discoActive) this.scene.stopDiscoMoment();
     this.motionQuery?.removeEventListener?.('change', this.onMotionPreferenceChange);
+    this.pointerQuery?.removeEventListener?.('change', this.onMotionPreferenceChange);
     this.wanderTimer?.remove();
     this.birdLookTimer?.remove();
     this.thoughtTimer?.remove();
