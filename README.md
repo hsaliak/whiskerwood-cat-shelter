@@ -13,7 +13,7 @@ Run checks with `npm test` and make a production build with `npm run build`.
 
 ## Deploy to Cloudflare Pages
 
-The GitHub Actions workflow builds `dist` and deploys it when code is pushed to `main`. Create a Cloudflare Pages project named `whiskerwood-cat-shelter`, then add `CLOUDFLARE_API_TOKEN` (with Pages edit permission) and `CLOUDFLARE_ACCOUNT_ID` as GitHub Actions secrets. The default site URL will be `https://whiskerwood-cat-shelter.pages.dev`.
+Connect the public GitHub repository `hsaliak/whiskerwood-cat-shelter` to Cloudflare Pages. Use the Vite preset, build command `npm run build`, and build output directory `dist`. Cloudflare will deploy pushes to `main` and provide a `*.pages.dev` URL.
 
 ## Art assets
 
