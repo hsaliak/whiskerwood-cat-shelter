@@ -2,6 +2,9 @@ node_modules/
 dist/
 .vite/
 
+# Unused legacy art packs; the current game uses other assets
+public/assets/pochi/
+
 # Local databases and logs
 *.db
 *.db-*
