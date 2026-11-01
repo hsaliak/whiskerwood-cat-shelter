@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { catBehaviorThought, chooseCatThought } from './catThoughts.js';
 import { shouldReduceCatMotion } from './motionPreference.js';
+import { getWalkDuration } from './animationTiming.js';
 
 const CAT_WALK_ANIMATION = 'cat-walk-cycle';
 const WALK_MIN_X = 70;
@@ -9,10 +10,10 @@ const WALK_Y_MAX = 495;
 const SPRITE_FOOT_OFFSET = 39;
 
 const WANDER_ACTIONS = {
-  shy: [[30, 'sit'], [26, 'groom'], [20, 'bed'], [14, 'perch'], [10, 'walk']],
-  playful: [[25, 'stretch'], [20, 'walk'], [20, 'perch'], [15, 'groom'], [10, 'bed'], [10, 'sit']],
-  curious: [[25, 'perch'], [25, 'walk'], [20, 'stretch'], [10, 'groom'], [10, 'sit'], [10, 'bed']],
-  cuddly: [[30, 'bed'], [22, 'groom'], [20, 'sit'], [10, 'stretch'], [8, 'perch'], [10, 'walk']],
+  shy: [[26, 'sit'], [20, 'groom'], [18, 'bed'], [12, 'perch'], [10, 'look'], [8, 'tail'], [6, 'walk']],
+  playful: [[20, 'stretch'], [20, 'walk'], [18, 'perch'], [14, 'groom'], [8, 'bed'], [8, 'sit'], [6, 'look'], [6, 'tail']],
+  curious: [[20, 'perch'], [22, 'walk'], [18, 'stretch'], [10, 'groom'], [8, 'sit'], [9, 'bed'], [7, 'look'], [6, 'tail']],
+  cuddly: [[24, 'bed'], [20, 'groom'], [18, 'sit'], [10, 'stretch'], [7, 'perch'], [8, 'walk'], [7, 'look'], [6, 'tail']],
 };
 
 export class CatView {
@@ -248,7 +249,8 @@ export class CatView {
       this.birdLookTimer?.remove();
       this.birdLookTimer = null;
       this.cleanupActiveToy();
-      this.curlTail.setVisible(false);
+      this.scene.tweens.killTweensOf(this.curlTail);
+      this.curlTail.setVisible(false).setAlpha(1).setAngle(0);
       if (this.discoActive) {
         this.scene.stopDiscoMoment();
         this.discoActive = false;
@@ -280,10 +282,46 @@ export class CatView {
       targets: this.sprite,
       y: this.spriteBaseY - 1.5,
       scaleY: this.spriteScaleY * 1.012,
-      duration: 1800,
+      duration: 1600 + (this.animationOffset % 900),
+      delay: this.animationOffset % 650,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.InOut',
+    });
+  }
+
+  lookAround() {
+    this.isActing = true;
+    this.scene.tweens.killTweensOf(this.sprite);
+    this.sprite.setPosition(0, this.spriteBaseY).setScale(this.spriteScaleX, this.spriteScaleY);
+    const facing = this.container.x < this.scene.scale.width / 2 ? -1 : 1;
+    this.setPatternFacing(facing);
+    this.scene.tweens.add({
+      targets: this.sprite,
+      angle: facing * 2.5,
+      y: this.spriteBaseY - 2,
+      duration: 340,
+      hold: 700,
+      yoyo: true,
+      ease: 'Sine.InOut',
+      onComplete: () => {
+        this.setPatternFacing(1);
+        this.finishAction();
+      },
+    });
+  }
+
+  tailFlick() {
+    this.isActing = true;
+    this.curlTail.setVisible(true).setAlpha(0.88).setAngle(-7);
+    this.scene.tweens.add({
+      targets: this.curlTail,
+      angle: 8,
+      duration: 180,
+      yoyo: true,
+      repeat: 2,
+      ease: 'Sine.InOut',
+      onComplete: () => this.finishAction(),
     });
   }
 
@@ -313,6 +351,8 @@ export class CatView {
         else if (activity === 'groom') this.groom();
         else if (activity === 'perch') this.visitStool();
         else if (activity === 'bed') this.visitBed();
+        else if (activity === 'look') this.lookAround();
+        else if (activity === 'tail') this.tailFlick();
         else this.startWalk(true);
       },
     );
@@ -323,8 +363,10 @@ export class CatView {
     this.selectionRing.setScale(selected ? 1 : 0.88);
   }
 
-  walkTo(x, y, onArrival, duration = 1150) {
+  walkTo(x, y, onArrival) {
     const direction = x < this.container.x ? -1 : 1;
+    const distance = Phaser.Math.Distance.Between(this.container.x, this.container.y, x, y);
+    const duration = getWalkDuration(distance);
     this.scene.tweens.killTweensOf(this.sprite);
     this.scene.tweens.killTweensOf(this.shadow);
     this.shadow.setScale(1).setAlpha(0.12);
@@ -337,14 +379,14 @@ export class CatView {
       x,
       y: y + 1,
       duration,
-      ease: 'Sine.InOut',
+      ease: 'Linear',
     });
     this.scene.tweens.add({
       targets: this.container,
       x,
       y,
       duration,
-      ease: 'Sine.InOut',
+      ease: 'Linear',
       onComplete: () => {
         this.y = y;
         this.setPatternFacing(1);
@@ -377,7 +419,7 @@ export class CatView {
         yoyo: true,
         repeat: 2,
         ease: 'Sine.Out',
-        onComplete: () => this.walkTo(target.x, groundY, () => this.finishAction(), 500),
+        onComplete: () => this.walkTo(target.x, groundY, () => this.finishAction()),
       });
       this.scene.tweens.add({
         targets: this.sprite,
@@ -415,15 +457,13 @@ export class CatView {
     this.scene.tweens.killTweensOf(this.sprite);
     this.sprite.anims.stop().setFrame(0);
     this.showThoughtBubble(this.thought('groom'));
-    this.scene.tweens.add({
+    this.scene.tweens.chain({
       targets: this.sprite,
-      y: this.spriteBaseY + 7,
-      scaleY: this.spriteScaleY * 0.9,
-      angle: -5,
-      duration: 190,
-      yoyo: true,
-      repeat: 3,
-      ease: 'Sine.InOut',
+      tweens: [
+        { y: this.spriteBaseY + 4, scaleY: this.spriteScaleY * 0.94, duration: 200, ease: 'Sine.Out' },
+        { y: this.spriteBaseY + 7, scaleY: this.spriteScaleY * 0.9, angle: -5, duration: 190, yoyo: true, repeat: 3, ease: 'Sine.InOut' },
+        { y: this.spriteBaseY, scaleX: this.spriteScaleX, scaleY: this.spriteScaleY, angle: 0, duration: 260, ease: 'Sine.Out' },
+      ],
       onComplete: () => this.finishAction(),
     });
   }
@@ -433,14 +473,13 @@ export class CatView {
     this.walkTo(target.x, target.y, () => {
       this.sprite.anims.stop().setFrame(0);
       this.showThoughtBubble(this.thought('water'));
-      this.scene.tweens.add({
+      this.scene.tweens.chain({
         targets: this.sprite,
-        y: this.spriteBaseY + 5,
-        scaleY: this.spriteScaleY * 0.96,
-        duration: 240,
-        yoyo: true,
-        repeat: 3,
-        ease: 'Sine.InOut',
+        tweens: [
+          { y: this.spriteBaseY + 7, scaleY: this.spriteScaleY * 0.94, duration: 220, ease: 'Sine.Out' },
+          { y: this.spriteBaseY + 4, scaleY: this.spriteScaleY * 0.97, duration: 160, yoyo: true, repeat: 4, ease: 'Sine.InOut' },
+          { y: this.spriteBaseY, scaleY: this.spriteScaleY, duration: 260, ease: 'Sine.Out' },
+        ],
         onComplete: () => this.finishAction(),
       });
     });
@@ -451,17 +490,26 @@ export class CatView {
     this.scene.tweens.killTweensOf(this.sprite);
     this.sprite.anims.stop().setFrame(0);
     this.showThoughtBubble(this.thought('sit'));
-    this.sprite.setPosition(0, this.spriteBaseY + 5).setScale(this.spriteScaleX * 1.04, this.spriteScaleY * 0.84);
-    this.actionTimer = this.scene.time.delayedCall(1550, () => {
-      this.scene.tweens.add({
-        targets: this.sprite,
-        y: this.spriteBaseY,
-        scaleX: this.spriteScaleX,
-        scaleY: this.spriteScaleY,
-        duration: 380,
-        ease: 'Sine.Out',
-        onComplete: () => this.finishAction(),
-      });
+    this.scene.tweens.add({
+      targets: this.sprite,
+      y: this.spriteBaseY + 5,
+      scaleX: this.spriteScaleX * 1.04,
+      scaleY: this.spriteScaleY * 0.84,
+      duration: 240,
+      ease: 'Sine.Out',
+      onComplete: () => {
+        this.actionTimer = this.scene.time.delayedCall(1550, () => {
+          this.scene.tweens.add({
+            targets: this.sprite,
+            y: this.spriteBaseY,
+            scaleX: this.spriteScaleX,
+            scaleY: this.spriteScaleY,
+            duration: 420,
+            ease: 'Back.Out',
+            onComplete: () => this.finishAction(),
+          });
+        });
+      },
     });
   }
 
@@ -472,10 +520,26 @@ export class CatView {
     this.walkTo(target.x, target.y, () => {
       this.sprite.anims.stop().setFrame(0);
       this.showThoughtBubble(this.thought('perch'));
-      this.sprite.setPosition(0, this.spriteBaseY + 3).setScale(this.spriteScaleX * 1.04, this.spriteScaleY * 0.86);
-      this.actionTimer = this.scene.time.delayedCall(2300, () => {
-        this.sprite.setScale(this.spriteScaleX, this.spriteScaleY).setPosition(0, this.spriteBaseY);
-        this.walkTo(target.x, groundY, () => this.finishAction(), 500);
+      this.scene.tweens.add({
+        targets: this.sprite,
+        y: this.spriteBaseY + 3,
+        scaleX: this.spriteScaleX * 1.04,
+        scaleY: this.spriteScaleY * 0.86,
+        duration: 260,
+        ease: 'Sine.Out',
+        onComplete: () => {
+          this.actionTimer = this.scene.time.delayedCall(2300, () => {
+            this.scene.tweens.add({
+              targets: this.sprite,
+              y: this.spriteBaseY,
+              scaleX: this.spriteScaleX,
+              scaleY: this.spriteScaleY,
+              duration: 240,
+              ease: 'Sine.Out',
+              onComplete: () => this.walkTo(target.x, groundY, () => this.finishAction()),
+            });
+          });
+        },
       });
     });
   }
@@ -486,12 +550,32 @@ export class CatView {
     const groundY = this.y;
     this.walkTo(target.x, target.y, () => {
       this.sprite.anims.stop().setFrame(0);
-      this.curlTail.setVisible(true);
-      this.sprite.setPosition(0, this.spriteBaseY + 5).setScale(this.spriteScaleX * 1.16, this.spriteScaleY * 0.72);
+      this.curlTail.setVisible(true).setAlpha(0).setAngle(0);
+      this.scene.tweens.add({ targets: this.curlTail, alpha: 0.9, duration: 320, ease: 'Sine.Out' });
       this.showThoughtBubble(this.thought(holdDuration > 2800 ? 'rest' : 'bed'));
+      this.scene.tweens.chain({
+        targets: this.sprite,
+        tweens: [
+          { y: this.spriteBaseY + 8, scaleX: this.spriteScaleX * 1.06, scaleY: this.spriteScaleY * 0.88, duration: 220, ease: 'Sine.Out' },
+          { y: this.spriteBaseY + 5, scaleX: this.spriteScaleX * 1.16, scaleY: this.spriteScaleY * 0.72, duration: 320, ease: 'Sine.InOut' },
+        ],
+        onComplete: () => {
+          if (!this.isActing) return;
+          this.scene.tweens.add({
+            targets: this.sprite,
+            y: this.spriteBaseY + 4,
+            scaleY: this.spriteScaleY * 0.74,
+            duration: 1350,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.InOut',
+          });
+        },
+      });
       this.actionTimer = this.scene.time.delayedCall(holdDuration, () => {
-        this.sprite.setScale(this.spriteScaleX, this.spriteScaleY).setPosition(0, this.spriteBaseY);
-        this.walkTo(target.x, groundY, () => this.finishAction(), 650);
+        this.scene.tweens.killTweensOf(this.curlTail);
+        this.curlTail.setVisible(false).setAlpha(1).setAngle(0);
+        this.walkTo(target.x, groundY, () => this.finishAction());
       });
     });
   }
@@ -536,15 +620,13 @@ export class CatView {
 
   playTreatAnimation() {
     this.showThoughtBubble(this.thought('treat'));
-    this.scene.tweens.add({
+    this.scene.tweens.chain({
       targets: this.sprite,
-      y: this.spriteBaseY + 3,
-      scaleX: this.spriteScaleX * 1.03,
-      scaleY: this.spriteScaleY * 0.97,
-      duration: 190,
-      yoyo: true,
-      repeat: 2,
-      ease: 'Sine.InOut',
+      tweens: [
+        { y: this.spriteBaseY - 3, scaleY: this.spriteScaleY * 1.03, duration: 180, ease: 'Sine.Out' },
+        { y: this.spriteBaseY + 4, scaleX: this.spriteScaleX * 1.03, scaleY: this.spriteScaleY * 0.96, duration: 170, yoyo: true, repeat: 2, ease: 'Sine.InOut' },
+        { y: this.spriteBaseY, scaleX: this.spriteScaleX, scaleY: this.spriteScaleY, duration: 220, ease: 'Sine.Out' },
+      ],
       onComplete: () => this.finishAction(),
     });
   }
@@ -612,14 +694,13 @@ export class CatView {
 
   playCareAnimation() {
     this.showThoughtBubble(this.thought('food'));
-    this.scene.tweens.add({
+    this.scene.tweens.chain({
       targets: this.sprite,
-      y: this.spriteBaseY + 4,
-      scaleY: this.spriteScaleY * 0.95,
-      duration: 180,
-      yoyo: true,
-      repeat: 3,
-      ease: 'Sine.InOut',
+      tweens: [
+        { y: this.spriteBaseY - 3, scaleY: this.spriteScaleY * 1.02, duration: 180, ease: 'Sine.Out' },
+        { y: this.spriteBaseY + 6, scaleY: this.spriteScaleY * 0.93, duration: 190, yoyo: true, repeat: 4, ease: 'Sine.InOut' },
+        { y: this.spriteBaseY, scaleY: this.spriteScaleY, duration: 240, ease: 'Sine.Out' },
+      ],
       onComplete: () => this.finishAction(),
     });
   }
@@ -628,7 +709,8 @@ export class CatView {
     this.cleanupActiveToy();
     this.birdLookTimer?.remove();
     this.birdLookTimer = null;
-    this.curlTail.setVisible(false);
+    this.scene.tweens.killTweensOf(this.curlTail);
+    this.curlTail.setVisible(false).setAlpha(1).setAngle(0);
     if (this.discoActive) {
       this.scene.stopDiscoMoment();
       this.discoActive = false;
@@ -664,7 +746,7 @@ export class CatView {
     const destinationY = isWandering
       ? Phaser.Math.Clamp(this.y + Phaser.Math.Between(-22, 22), WALK_Y_MIN, WALK_Y_MAX)
       : this.y;
-    this.walkTo(destinationX, destinationY, () => this.finishAction(), isWandering ? 1500 : 1150);
+    this.walkTo(destinationX, destinationY, () => this.finishAction());
   }
 
   finishAction() {
@@ -678,11 +760,12 @@ export class CatView {
     this.scene.tweens.killTweensOf(this.container);
     this.scene.tweens.killTweensOf(this.sprite);
     this.scene.tweens.killTweensOf(this.shadow);
+    this.scene.tweens.killTweensOf(this.curlTail);
+    this.curlTail.setVisible(false).setAlpha(1).setAngle(0);
     this.shadow.setPosition(this.container.x, this.y + 1).setScale(1).setAlpha(0.12);
     this.sprite.anims.stop();
     this.sprite.setFrame(0).setPosition(0, this.spriteBaseY).setScale(this.spriteScaleX, this.spriteScaleY).setFlipX(false).setAngle(0);
     this.setPatternFacing(1);
-    this.curlTail.setVisible(false);
     this.container.y = this.y;
     this.isActing = false;
     if (!this.reducedMotion && this.scene.scene.isActive()) {
@@ -704,6 +787,7 @@ export class CatView {
     this.scene.tweens.killTweensOf(this.container);
     this.scene.tweens.killTweensOf(this.sprite);
     this.scene.tweens.killTweensOf(this.shadow);
+    this.scene.tweens.killTweensOf(this.curlTail);
     this.shadow.destroy();
     this.container.destroy();
   }
